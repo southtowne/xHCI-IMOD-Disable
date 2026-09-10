@@ -3,7 +3,7 @@ Disables xHCI Interrupt Moderation (IMOD) on every USB host controller found in 
 
 <img width="978" height="512" alt="xHCI" src="https://github.com/user-attachments/assets/e4073d72-abaf-4887-846a-223cfe34f572" />
 
-![GitHub Release Downloads](https://img.shields.io/github/downloads/southtowne/xHCI-IMOD-Disabler/total)
+![GitHub Release Downloads](https://img.shields.io/github/downloads/southtowne/xHCI-IMOD-Disable/total)
 
 # Usage
 Simply follow the quick and easy steps below ↓
