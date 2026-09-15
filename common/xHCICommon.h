@@ -24,10 +24,8 @@ using UnmapPhysicalMemory_t  = BOOL(WINAPI*)(HANDLE physMemHandle, PBYTE linAddr
 
 // Dynamic driver loading
 
-// Resolves <exe directory>\<fileName>. LoadLibrary would find a bare filename
-// in the exe's directory anyway, but building the full path removes any
-// ambiguity from how the process was launched (working directory, shortcuts,
-// Task Scheduler, etc.) and makes a failed load report the exact path tried.
+// Resolves <exe directory>\<fileName>, so a failed load reports the exact
+// path tried regardless of working directory or how the process was launched.
 inline std::wstring DllPathNextToExe(const std::string& fileName) {
     wchar_t exePathBuf[MAX_PATH];
     GetModuleFileNameW(nullptr, exePathBuf, MAX_PATH);
@@ -44,8 +42,7 @@ inline std::wstring DllPathNextToExe(const std::string& fileName) {
 }
 
 // Loads a DLL next to the exe and resolves a fixed list of exports from it.
-// Shared by WinRing0 and InpOut below so both surface the same specific,
-// diagnosable error messages on failure.
+// Shared by WinRing0 and InpOut below so both give the same specific errors.
 struct DynamicDll {
     HMODULE module = nullptr;
     std::string lastError;
@@ -106,8 +103,8 @@ struct DynamicDll {
 
 // WinRing0 (or an equivalent OLS-API driver): PCI config space access only,
 // used to locate each xHCI controller and read its BAR. Many redistributed
-// WinRing0 builds have had their MMIO functions stripped out, so MMIO access
-// is delegated to InpOut instead (below) rather than assumed to be present here.
+// builds have had their MMIO functions stripped out, so MMIO is delegated
+// to InpOut instead (below).
 struct WinRing0 : DynamicDll {
     InitializeOls_t InitializeOls = nullptr;
     DeinitializeOls_t DeinitializeOls = nullptr;
@@ -124,14 +121,12 @@ struct WinRing0 : DynamicDll {
     }
 };
 
-// InpOutX64 (or an equivalent WinIo-descended driver): physical memory (MMIO)
-// access, used for the actual xHCI capability/runtime/interrupter register
-// reads and writes via MapPhysToLin/UnmapPhysicalMemory. The official
-// InpOutX64 API is just Inp32/Out32 port I/O; this instead relies on the
-// MapPhysToLin/UnmapPhysicalMemory pair that several widely-redistributed
-// builds descended from Yariv Kaplan's WinIo also carry. (GetPhysLong/
-// SetPhysLong convenience wrappers exist on some builds too but are
-// deliberately not used here -- they crash on at least one common build.)
+// InpOutX64 (or an equivalent WinIo-descended driver): MMIO reads/writes of
+// the xHCI capability/runtime/interrupter registers via MapPhysToLin/
+// UnmapPhysicalMemory. The official InpOutX64 API is just Inp32/Out32 port
+// I/O; this pair is instead carried over from WinIo, which several
+// redistributed builds descend from. GetPhysLong/SetPhysLong wrappers exist
+// on some builds too but crash on at least one, so aren't used here.
 struct InpOut : DynamicDll {
     MapPhysToLin_t MapPhysToLin = nullptr;
     UnmapPhysicalMemory_t UnmapPhysicalMemory = nullptr;
@@ -144,9 +139,8 @@ struct InpOut : DynamicDll {
     }
 };
 
-// Maps a physical address range once and allows DWORD read/write through it,
-// keyed by absolute physical address so callers don't do their own pointer
-// arithmetic.
+// Maps a physical address range and allows DWORD read/write through it by
+// absolute physical address.
 struct PhysMemWindow {
     InpOut* driver = nullptr;
     HANDLE handle = nullptr;
@@ -179,10 +173,17 @@ struct PhysMemWindow {
 // PCI / xHCI register layout
 
 constexpr DWORD PCI_REG_VENDOR_DEVICE = 0x00;
+constexpr DWORD PCI_REG_COMMAND       = 0x04;
 constexpr DWORD PCI_REG_CLASS_CODE    = 0x08;
 constexpr DWORD PCI_REG_HEADER_TYPE   = 0x0C;
 constexpr DWORD PCI_REG_BAR0          = 0x10;
 constexpr DWORD PCI_REG_BAR1          = 0x14;
+
+// PCI COMMAND register, bit 1: Memory Space Enable. If clear, the BAR reads
+// back a plausible address but nothing answers there (open-bus, typically
+// 0xFFFFFFFF) -- typical of a controller Windows has disabled or the
+// platform has parked.
+constexpr DWORD PCI_COMMAND_MEMORY_SPACE = 0x0002;
 
 constexpr DWORD XHCI_CLASS_CODE = 0x0C0330;
 
@@ -201,6 +202,8 @@ struct xHCIRuntimeInfo {
     uint64_t capabilityBase = 0;
     uint64_t runtimeBase = 0;
     DWORD maxIntrs = 0;
+    // Why ResolveRuntimeInfo() gave up; empty when valid is true.
+    const char* failReason = "";
 };
 
 // Logging
@@ -214,8 +217,7 @@ inline std::string TimestampNow() {
     return std::string(buf);
 }
 
-// Writes timestamped run details to %LOCALAPPDATA%\xHCI IMOD\Log.txt, so an
-// unattended run's result can still be checked afterward even with -silent.
+// Logs timestamped run details to %LOCALAPPDATA%\xHCI IMOD\Log.txt.
 // Each run overwrites the file rather than appending, so it never grows.
 struct Logger {
     FILE* file = nullptr;
@@ -326,18 +328,31 @@ inline uint64_t GetCapabilityBase(WinRing0& ols, DWORD pciAddress) {
     return capabilityBase;
 }
 
-// HCSPARAMS1 (+0x04) and RTSOFF (+0x18) both live in the first page of the
-// capability register space, so one small mapped window covers both.
+// HCSPARAMS1 (+0x04) and RTSOFF (+0x18) both fit in one page.
 constexpr DWORD XHCI_CAP_WINDOW_SIZE = 0x1000;
 
 inline xHCIRuntimeInfo ResolveRuntimeInfo(WinRing0& ols, InpOut& io, DWORD pciAddress) {
     xHCIRuntimeInfo info;
 
+    DWORD commandReg = 0;
+    if (!ols.ReadPciConfigDwordEx(pciAddress, PCI_REG_COMMAND, &commandReg)) {
+        info.failReason = "could not read PCI command register";
+        return info;
+    }
+    if ((commandReg & PCI_COMMAND_MEMORY_SPACE) == 0) {
+        info.failReason = "memory space disabled (controller likely disabled/parked)";
+        return info;
+    }
+
     info.capabilityBase = GetCapabilityBase(ols, pciAddress);
-    if (info.capabilityBase == 0) return info;
+    if (info.capabilityBase == 0) {
+        info.failReason = "BAR0 missing or not a memory BAR";
+        return info;
+    }
 
     PhysMemWindow capWindow;
     if (!capWindow.Map(io, info.capabilityBase, XHCI_CAP_WINDOW_SIZE)) {
+        info.failReason = "failed to map capability register window";
         return info;
     }
 
@@ -349,8 +364,17 @@ inline xHCIRuntimeInfo ResolveRuntimeInfo(WinRing0& ols, InpOut& io, DWORD pciAd
 
     capWindow.Unmap();
 
+    if (hcsparams1 == 0xFFFFFFFFu) {
+        info.failReason = "capability registers read as open-bus (0xFFFFFFFF)";
+        return info;
+    }
+    if (info.maxIntrs == 0 || info.maxIntrs > 1024) {
+        info.failReason = "HCSPARAMS1 reported an implausible interrupter count";
+        return info;
+    }
+
     info.runtimeBase = info.capabilityBase + rtsoff;
-    info.valid = (info.maxIntrs > 0 && info.maxIntrs <= 1024);
+    info.valid = true;
 
     return info;
 }
@@ -359,8 +383,7 @@ inline uint64_t ImodAddress(const xHCIRuntimeInfo& info, DWORD interrupterIndex)
     return info.runtimeBase + XHCI_IR0_OFFSET + (static_cast<uint64_t>(XHCI_IR_SIZE) * interrupterIndex) + XHCI_IMOD_OFFSET;
 }
 
-// Size of the mapped window needed to cover every interrupter register set
-// for a controller with the given interrupter count, rounded up to a page.
+// Rounds the interrupter register window up to a page.
 inline DWORD InterrupterWindowSize(DWORD maxIntrs) {
     DWORD needed = XHCI_IR0_OFFSET + (maxIntrs * XHCI_IR_SIZE);
     return (needed + 0xFFF) & ~0xFFFu;
