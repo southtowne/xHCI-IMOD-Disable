@@ -8,9 +8,9 @@ Disables xHCI Interrupt Moderation (IMOD) on every USB host controller found in 
 # Usage
 Simply follow the quick and easy steps below ↓
 
-1. Download [Release.7z](https://github.com/southtowne/xHCI-IMOD-Disable/releases/download/IMOD/Release.7z).
-2. Right-click & extract to a folder like C:\Windows\Misc
-3. Right-click xHCIImodDisable.exe -> Run as administrator. Add -silent as a launch argument for [Task Scheduler](https://www.windowscentral.com/how-create-automated-task-using-task-scheduler-windows-10) use.
+1. Download [Release.7z](https://github.com/southtowne/xHCI-IMOD-Disable/releases/download/xHCI/Release.7z).
+2. Right-click & extract
+3. Right-click xHCIImodDisable.exe -> Run as administrator.
 
 # Build instructions:
 
