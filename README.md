@@ -1,7 +1,7 @@
 # xHCI IMOD Disabler
 Disables xHCI Interrupt Moderation (IMOD) on every USB host controller found in the system by patching each interrupter's IMOD register to 0 via PCI/MMIO access (WinRing0 + InpOutX64). Features a log file located at %LOCALAPPDATA%\xHCI IMOD\Log.txt.
 
-<img width="978" height="512" alt="xHCI" src="https://github.com/user-attachments/assets/e231dcb6-f3e5-4528-9821-5a9659180812" />
+<img width="978" height="512" alt="Desktop-screenshot-09-27-2026_04_01_AM" src="https://github.com/user-attachments/assets/4bb9d57e-ec4c-40c4-8acd-affc80548cda" />
 
 ![GitHub Release Downloads](https://img.shields.io/github/downloads/southtowne/xHCI-IMOD-Disable/total)
 
