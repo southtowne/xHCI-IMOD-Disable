@@ -8,7 +8,7 @@ Disables xHCI Interrupt Moderation (IMOD) on every USB host controller found in 
 # Usage
 Simply follow the quick and easy steps below ↓
 
-1. Download [Release.7z](https://github.com/southtowne/xHCI-IMOD-Disable/releases/download/xHCI/Release.7z).
+1. Download [Release.zip](https://github.com/southtowne/xHCI-IMOD-Disable/releases/download/XHCI/Release.zip).
 2. Right-click & extract
 3. Right-click xHCIImodDisable.exe -> Run as administrator.
 
@@ -17,6 +17,5 @@ Simply follow the quick and easy steps below ↓
 1. Prerequisites: Windows 10/11 x64, Visual Studio 2022+ with the "Desktop development with C++" workload (MSVC v143+ toolset, Windows 10/11 SDK).
 2. Clone: git clone https://github.com/southtowne/xHCI-IMOD-Disable.git
 3. Build: Open xHCIImodDisable.sln in Visual Studio and Build Solution
-4. Output: the exe lands at x64\Release\xHCIImodDisable.exe.
-5. Add the drivers: copy all four files from the repo's Drivers\ folder (WinRing0x64.dll, WinRing0x64.sys, inpoutx64.dll, inpoutx64.sys) into that same x64\Release\ folder, next to the exe — it won't run without them sitting right beside it.
-6. Right-click xHCIImodDisable.exe -> Run as administrator.
+4. Output: the exe lands at x64\Release\xHCIImodDisable.exe, automatically copying the drivers next to it.
+5. Right-click xHCIImodDisable.exe -> Run as administrator.
